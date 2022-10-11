@@ -1,23 +1,47 @@
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
+import { USDC, SWAP_ROUTER_V2 } from "./address";
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
+    let usdcToken;
+	let swapRouterV2;
+	let cl
+	const accounts = await ethers.getSigners();
+	const deployer = accounts[0];
+    const CollateralizedLeverage = await ethers.getContractFactory(
+        "CollateralizedLeverage",
+	);
+	if ((network.name === "hardhat") || (network.name === "mainnet")) {
+		usdcToken = USDC;
+		swapRouterV2 = SWAP_ROUTER_V2;
+		cl = await CollateralizedLeverage.deploy(
+			usdcToken,
+			swapRouterV2,
+			ethers.utils.parseEther("10"),
+		);
+	} else {
+		usdcToken = await ethers.getContractAt("ERC20", USDC, deployer);
+		swapRouterV2 = await ethers.getContractAt(
+            "UniswapV2Router02",
+            SWAP_ROUTER_V2,
+            deployer,
+        );
+		cl = await CollateralizedLeverage.deploy(
+			usdcToken.address,
+			swapRouterV2.address,
+			ethers.utils.parseEther("10"),
+		);
+	}
 
-  const lockedAmount = ethers.utils.parseEther("1");
+    await cl.deployed();
 
-  const Lock = await ethers.getContractFactory("CollateralizedLeverage");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-  await lock.deployed();
-
-  console.log(`Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`);
+    console.log(
+        `Collateralized Leverage Smart Contract deployed to ${cl.address}`,
+    );
 }
 
 // We recommend this pattern to be able to use async/await everywhere
 // and properly handle errors.
 main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+    console.error(error);
+    process.exitCode = 1;
 });

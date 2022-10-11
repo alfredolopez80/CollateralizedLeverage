@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+/// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
 // Uncomment this line to use console.log
@@ -338,7 +338,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         if (block.timestamp >= borrow.endDate) {
             require(
                 _amountToRepay >= getAmountToPay(caller),
-                "The Amount no Enough to unleash the Collateral"
+                "The Amount not Enough to unleash the Collateral"
             );
             /// Execute the Transfer
             stablecoin.safeTransferFrom(caller, address(this), _amountToRepay);

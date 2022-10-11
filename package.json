@@ -10,7 +10,9 @@
 		"coverage-sto": "npx hardhat coverage --testfiles 'test/*.test.ts'",
 		"sto-gas-report": "npx hardhat test ./test/*.test.ts",
 		"lint": "prettier --list-different 'contracts/**/*.sol'",
-		"build": "rm -rf docs/ && npx hardhat clean && npx hardhat compile && npx solidity-docgen --solc-module solc -i ./contracts -t ./templates"
+		"build": "rm -rf docs/ && npx hardhat clean && npx hardhat compile && npx solidity-docgen --solc-module solc -i ./contracts -t ./templates",
+		"deploy-test": "npx hardhat run ./scripts/deploy.ts",
+		"deploy-mainnet": "npx hardhat run ./scripts/deploy.ts --network mainnet"
 	},
 	"author": "Alfredo Lopez",
 	"license": "MIT",

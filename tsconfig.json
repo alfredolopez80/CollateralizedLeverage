@@ -1,10 +1,30 @@
 {
-  "compilerOptions": {
-    "target": "es2020",
-    "module": "commonjs",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true
-  }
+    "compilerOptions": {
+        "target": "es2018",
+        "module": "commonjs",
+        "strict": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "noImplicitAny": false,
+        "esModuleInterop": true,
+        "outDir": "dist"
+    },
+    "include": ["./scripts", "./test", "./typechain-types"],
+    "files": ["./hardhat.config.ts"],
+    "definitions": {
+        "tsNodeDefinition": {
+            "properties": {
+                "ts-node": {
+                    "description": "ts-node options.  See also: https://typestrong.org/ts-node/docs/configuration\n\nts-node offers TypeScript execution and REPL for node.js, with source map support.",
+                    "properties": {
+                        "transpileOnly": {
+                            "default": true,
+                            "description": "Use TypeScript's faster `transpileModule`.",
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
