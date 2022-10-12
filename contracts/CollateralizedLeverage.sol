@@ -89,7 +89,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
 
     /// Event for when a new Loan is created, where `amountPerMount` is the amount of Stablecoin received based on the interest of the Loan
     event NewLoan(
-		uint256 indexed indexLoan,
+        uint256 indexed indexLoan,
         address indexed lender,
         uint256 amountStableCoin,
         uint256 amountPerMount
@@ -196,7 +196,10 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             isLender(caller) == false,
             "Lender has a loan that already exists"
         );
-        require(_amountStableCoin > 0, "Amount of Stablecoin must be greater than 0");
+        require(
+            _amountStableCoin > 0,
+            "Amount of Stablecoin must be greater than 0"
+        );
         stablecoin.safeTransferFrom(caller, address(this), _amountStableCoin);
         loans[indexLoans] = Loan({
             status: StatusLoan.PROCESSING,
@@ -205,10 +208,12 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             amountStableCoin: _amountStableCoin,
             amountAllocated: 0,
             amountClaimed: 0,
-            interest: _amountStableCoin.mulDiv(interestPerMonthLenders, 1 ether).div(100)
+            interest: _amountStableCoin
+                .mulDiv(interestPerMonthLenders, 1 ether)
+                .div(100)
         });
         emit NewLoan(
-			indexLoans,
+            indexLoans,
             caller,
             _amountStableCoin,
             _amountStableCoin.mulDiv(interestPerMonthLenders, 1 ether).div(100)
@@ -218,6 +223,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
 
     /// @dev Function to create a new Borrow
     /// @param _amountStableCoin: Amount of Stablecoin to represent of 50% of Value of Collateral at moment to create the Borrow
+    /// @param _indexLoans Index of the Loand where take the stablecoin
     function createBorrow(uint256 _amountStableCoin, uint256 _indexLoans)
         external
         payable
@@ -225,20 +231,19 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         nonReentrant
     {
         uint256 value = msg.value;
-		require(value > 0, "Amount of Collateral must be greater than 0");
+        require(value > 0, "Amount of Collateral must be greater than 0");
         Loan memory loan = loans[_indexLoans];
         require(loan.status == StatusLoan.PROCESSING, "Loan doesn't exist");
-		uint256 amountStableCoin = getStablecoinPerETH(value).div(2);
+        uint256 amountStableCoin = getStablecoinPerETH(value).div(2);
         require(
             amountStableCoin >= _amountStableCoin,
             "The amount of Stablecoin must be greater than the amount of Collateral"
         );
         require(
-            loan.amountStableCoin.sub(loan.amountAllocated) >=
-                amountStableCoin,
+            loan.amountStableCoin.sub(loan.amountAllocated) >= amountStableCoin,
             "Not enough Stablecoin Available in this Index Loan"
         );
-		address caller = _msgSender();
+        address caller = _msgSender();
         require(
             borrowings[caller].status == StatusBorrow.STARTED,
             "Borrow already exists"
@@ -255,7 +260,9 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             endDate: block.timestamp.add(getAmountMonth(value).mul(30 days)),
             amountCollateral: value,
             amountStableCoin: amountStableCoin,
-            interest: amountStableCoin.mulDiv(interestPerMonthBorrowers, 1 ether).div(100),
+            interest: amountStableCoin
+                .mulDiv(interestPerMonthBorrowers, 1 ether)
+                .div(100),
             indexLender: _indexLoans
         });
         loans[_indexLoans].amountAllocated = loans[_indexLoans]
@@ -265,7 +272,9 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             caller,
             value,
             amountStableCoin,
-            amountStableCoin.mulDiv(interestPerMonthBorrowers, 1 ether).div(100),
+            amountStableCoin.mulDiv(interestPerMonthBorrowers, 1 ether).div(
+                100
+            ),
             getAmountMonth(value)
         );
     }
@@ -419,33 +428,33 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         }
     }
 
-	// ------- Emergency Methods ------------- //
+    // ------- Emergency Methods ------------- //
 
-	/// @dev Method to getting all ERC20 token of the Contract and send to Another Account, validate only owner
-	/// @param _receipt Address of the Account that will receive the ERC20 token
-	function emergencyWithdrawERC20(address _receipt) external onlyOwner {
-		require(_receipt != address(0), "Receipt Address cannot be 0x0");
-		// Paused all Methods
-		_pause();
-		IERC20 token = IERC20(stablecoin);
-		uint256 balance = token.balanceOf(address(this));
-		token.safeTransfer(_receipt, balance);
-	}
+    /// @dev Method to getting all ERC20 token of the Contract and send to Another Account, validate only owner
+    /// @param _receipt Address of the Account that will receive the ERC20 token
+    function emergencyWithdrawERC20(address _receipt) external onlyOwner {
+        require(_receipt != address(0), "Receipt Address cannot be 0x0");
+        // Paused all Methods
+        _pause();
+        IERC20 token = IERC20(stablecoin);
+        uint256 balance = token.balanceOf(address(this));
+        token.safeTransfer(_receipt, balance);
+    }
 
-	/// @dev Method to getting all ETH of the Contract and send to Another Account, validate only owner
-	/// @param _receipt Address of the Account that will receive the ETH
-	function emergencyWithdrawETH(address payable _receipt) external onlyOwner {
-		require(_receipt != address(0), "Receipt Address cannot be 0x0");
-		// Paused all Methods
-		_pause();
-		uint256 balance = address(this).balance;
-		// solhint-disable-next-line avoid-low-level-calls, avoid-call-value
-		(bool success, ) = _receipt.call{value: balance}("");
-		require(
-			success,
-			"Address: unable to send value, recipient may have reverted"
-		);
-	}
+    /// @dev Method to getting all ETH of the Contract and send to Another Account, validate only owner
+    /// @param _receipt Address of the Account that will receive the ETH
+    function emergencyWithdrawETH(address payable _receipt) external onlyOwner {
+        require(_receipt != address(0), "Receipt Address cannot be 0x0");
+        // Paused all Methods
+        _pause();
+        uint256 balance = address(this).balance;
+        // solhint-disable-next-line avoid-low-level-calls, avoid-call-value
+        (bool success, ) = _receipt.call{value: balance}("");
+        require(
+            success,
+            "Address: unable to send value, recipient may have reverted"
+        );
+    }
 
     /// @dev Method to getting the amount of Mount where the collateral is low the stablecoin lend out plus interes
     function getAmountMonth(uint256 _amountCollateral)
@@ -456,10 +465,9 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         uint256 amountStableCoin = getStablecoinPerETH(_amountCollateral).div(
             2
         );
-        uint256 amountPerMonth = amountStableCoin.mulDiv(
-            interestPerMonthBorrowers,
-            100
-        );
+        uint256 amountPerMonth = amountStableCoin
+            .mulDiv(interestPerMonthBorrowers, 1 ether)
+            .div(100);
         amountMonth = amountStableCoin.div(amountPerMonth);
         if (amountStableCoin.mod(amountPerMonth) > 0) amountMonth++;
     }

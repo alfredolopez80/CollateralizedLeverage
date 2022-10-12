@@ -1,6 +1,10 @@
 import { expect } from "chai";
 import moment from "moment";
 import { BigNumber } from "ethers";
+import {
+    anyValue,
+    anyUint,
+} from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { ethers, network } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import {
@@ -406,9 +410,9 @@ describe("CollateralizedLeverage", function () {
         // Verify the Balance of USDC of Smart Contract
         const balanceBefore = await usdc.balanceOf(cl.address);
         // Call emergency metohd to withdraw all stablecoin of the contract
-		await cl.emergencyWithdrawERC20(owner.address);
-		// Unpaused the Smart Contract
-		await cl.unpause();
+        await cl.emergencyWithdrawERC20(owner.address);
+        // Unpaused the Smart Contract
+        await cl.unpause();
         // Validate the Create a Borrow with Borrower1
         await expect(
             cl
@@ -423,6 +427,40 @@ describe("CollateralizedLeverage", function () {
             .transfer(cl.address, await usdc.balanceOf(owner.address));
         expect(await usdc.balanceOf(cl.address)).to.equal(balanceBefore);
     });
+
+    it("Validate the Borrower can create the right way a Borrow", async () => {
+        // Getting the Interest for Borrowers
+        const interestPerMonthBorrowers =
+            parseInt((await cl.interestPerMonthBorrowers()).toString()) / 1e18;
+        // Validate the Borrower is not a Borrower before to create the Borrow
+        expect(await cl.isBorrower(borrower1.address)).to.equal(false);
+        // Getting a estimation of ETH to USDC
+        const amountStableCoin = (
+            await cl.getStablecoinPerETH(ethers.utils.parseEther("1.0"))
+        ).div(2);
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        )
+            .to.emit(cl, "NewBorrow")
+            .withArgs(
+                borrower1.address,
+                ethers.utils.parseEther("1.0"),
+                amountStableCoin,
+                amountStableCoin.mul(interestPerMonthBorrowers).div(100),
+                await cl.getAmountMonth(ethers.utils.parseEther("1.0")),
+		);
+		// Display the Amount of Month of the Borrow
+		console.log("Amount of Month of the Borrow: ", parseInt(await cl.getAmountMonth(ethers.utils.parseEther("1.0"))));
+        // Validate the Borrower is not a Borrower After to create the Borrow
+        expect(await cl.isBorrower(borrower1.address)).to.equal(true);
+    });
+
+    //** Happy Path */
 
     // ** Test Transfer OwnerShip */
     it("Transfer Ownership to Another Account", async function () {

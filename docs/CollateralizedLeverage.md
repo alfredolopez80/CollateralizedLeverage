@@ -179,6 +179,38 @@
 
 
 
+#### Methods `emergencyWithdrawERC20(address _receipt)`  Visibility:  external
+
+**Description**: Method to getting all ERC20 token of the Contract and send to Another Account, validate only owner
+
+
+**Arguments:**
+| Type | Name |
+| ---- | ---- |
+| address | _receipt |
+
+
+**Descriptions of Arguments:**
+ **_receipt**: Address of the Account that will receive the ERC20 token 
+
+
+
+#### Methods `emergencyWithdrawETH(address payable _receipt)`  Visibility:  external
+
+**Description**: Method to getting all ETH of the Contract and send to Another Account, validate only owner
+
+
+**Arguments:**
+| Type | Name |
+| ---- | ---- |
+| address payable | _receipt |
+
+
+**Descriptions of Arguments:**
+ **_receipt**: Address of the Account that will receive the ETH 
+
+
+
 #### Methods `getAmountMonth(uint256 _amountCollateral) → uint256 amountMonth`  Visibility:  public
 
 **Description**: Method to getting the amount of Mount where the collateral is low the stablecoin lend out plus interes
@@ -312,12 +344,13 @@
 ---
 ### Events
 
-#### Event `NewLoan(address lender, uint256 amountStableCoin, uint256 amountPerMount)`
+#### Event `NewLoan(uint256 indexLoan, address lender, uint256 amountStableCoin, uint256 amountPerMount)`
 
 **Description:** 
 **Arguments:**
 | Type | Name |
 | ---- | ---- |
+| uint256 | indexLoan |
 | address | lender |
 | uint256 | amountStableCoin |
 | uint256 | amountPerMount |
