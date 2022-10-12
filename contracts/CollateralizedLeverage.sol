@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -228,9 +228,14 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
 		require(value > 0, "Amount of Collateral must be greater than 0");
         Loan memory loan = loans[_indexLoans];
         require(loan.status == StatusLoan.PROCESSING, "Loan doesn't exist");
+		uint256 amountStableCoin = getStablecoinPerETH(value).div(2);
+        require(
+            amountStableCoin >= _amountStableCoin,
+            "The amount of Stablecoin must be greater than the amount of Collateral"
+        );
         require(
             loan.amountStableCoin.sub(loan.amountAllocated) >=
-                _amountStableCoin,
+                amountStableCoin,
             "Not enough Stablecoin Available in this Index Loan"
         );
 		address caller = _msgSender();
@@ -238,14 +243,9 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             borrowings[caller].status == StatusBorrow.STARTED,
             "Borrow already exists"
         );
-        uint256 amountStableCoin = getStablecoinPerETH(value).div(2);
-        require(
-            amountStableCoin >= _amountStableCoin,
-            "The amount of Stablecoin must be greater than the amount of Collateral"
-        );
         require(
             stablecoin.balanceOf(address(this)) >= amountStableCoin,
-            "Not enough Stablecoin"
+            "Smart Contract Not enough Stablecoin"
         );
         stablecoin.safeTransfer(caller, amountStableCoin);
         borrowings[caller] = Borrow({
@@ -517,7 +517,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         view
         returns (uint256 amountStablecoin)
     {
-        amountStablecoin = _amountETH.div(2).mulDiv(getPriceInUSD(), 1 ether);
+        amountStablecoin = _amountETH.mulDiv(getPriceInUSD(), 1 ether);
     }
 
     /// @dev Method to verify if the guarantee is claimable by the Lender

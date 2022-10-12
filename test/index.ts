@@ -402,17 +402,26 @@ describe("CollateralizedLeverage", function () {
         );
     });
 
-    it("Validate Method createBorrow revert if the amount in stable coin request exceed the 50 % of value of Collateral in Stablecoin", async () => {
+    it("Validate Method createBorrow revert if the amount in stable coin request exceed the balance of Smart Contract", async () => {
+        // Verify the Balance of USDC of Smart Contract
+        const balanceBefore = await usdc.balanceOf(cl.address);
+        // Call emergency metohd to withdraw all stablecoin of the contract
+		await cl.emergencyWithdrawERC20(owner.address);
+		// Unpaused the Smart Contract
+		await cl.unpause();
         // Validate the Create a Borrow with Borrower1
         await expect(
             cl
                 .connect(borrower1)
-                .createBorrow(ethers.utils.parseUnits("10500000000", "wei"), 2, {
-                    value: ethers.utils.parseEther("12.0"),
+                .createBorrow(ethers.utils.parseUnits("5000000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("8.0"),
                 }),
-        ).to.revertedWith(
-            "The amount of Stablecoin must be greater than the amount of Collateral",
-        );
+        ).to.revertedWith("Smart Contract Not enough Stablecoin");
+        // Refunds the Smart contract with the stablecoin
+        await usdc
+            .connect(owner)
+            .transfer(cl.address, await usdc.balanceOf(owner.address));
+        expect(await usdc.balanceOf(cl.address)).to.equal(balanceBefore);
     });
 
     // ** Test Transfer OwnerShip */
