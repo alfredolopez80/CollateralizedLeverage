@@ -288,13 +288,12 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     {
         address caller = _msgSender();
         Borrow memory borrow = borrowings[caller];
-        require(borrow.status == StatusBorrow.PROCESSING, "Borrow not exists");
-        require(_amountStableCoin > 0, "Amount must be greater than 0");
+		require(_amountStableCoin > 0, "Amount must be greater than 0");
         require(
             stablecoin.balanceOf(caller) >= _amountStableCoin,
             "Not enough Stablecoin"
         );
-        if (block.timestamp >= borrow.endDate) {
+        if (!borrowIsPayable()) {
             borrow.status = StatusBorrow.DEFEATED;
             /// Emit Event
             emit BorrowDefeated(
@@ -305,9 +304,9 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             );
         } else {
             require(
-                (_amountStableCoin >= getAmountToPay(caller) &&
+                (_amountStableCoin >= getAmountToPaid(caller) &&
                     (_amountStableCoin >= borrow.amountStableCoin.mul(2))),
-                "Not enough to pay"
+                "Not enough to pay Borrow"
             );
             borrow.status = StatusBorrow.PAID;
             // Execute the Transfer
@@ -325,7 +324,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             );
         }
         /// Update the Storage
-        borrowings[caller] = borrow;
+        borrowings[caller].status = borrow.status;
     }
 
     /// @dev Method to repay the Loan by borrower after the deadline
@@ -344,7 +343,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         Borrow memory borrow = borrowings[caller];
         if (block.timestamp >= borrow.endDate) {
             require(
-                _amountToRepay >= getAmountToPay(caller),
+                _amountToRepay >= getAmountToPaid(caller),
                 "The Amount not Enough to unleash the Collateral"
             );
             /// Execute the Transfer
@@ -355,7 +354,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
                 borrow.amountCollateral,
                 borrow.amountStableCoin,
                 borrow.interest,
-                getAmountToPay(caller).sub(borrow.amountStableCoin.mul(2))
+                getAmountToPaid(caller).sub(borrow.amountStableCoin.mul(2))
             );
             /// Update the Storage
             borrow.status = StatusBorrow.PAID;
@@ -369,6 +368,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     function releaseCollateral() external whenNotPaused nonReentrant {
         address caller = _msgSender();
         Borrow memory borrow = borrowings[caller];
+		require(isBorrower(caller), "Borrower doesn't have any Borrow");
         require(borrow.status == StatusBorrow.PAID, "Borrow is not paid");
         require(
             block.timestamp >= borrow.endDate,
@@ -473,17 +473,16 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @dev Method to Getting the debt of the Borrow
-    function getAmountToPay(address _borrower)
+    function getAmountToPaid(address _borrower)
         public
         view
         returns (uint256 debt)
     {
         uint256 amountMonthPaid;
         Borrow memory borrow = borrowings[_borrower];
-        uint256 amountPerMonth = borrow.amountStableCoin.mulDiv(
-            interestPerMonthBorrowers,
-            100
-        );
+        uint256 amountPerMonth = borrow.amountStableCoin
+            .mulDiv(interestPerMonthBorrowers, 1 ether)
+            .div(100);
         if (
             (borrow.status == StatusBorrow.PROCESSING) &&
             (block.timestamp < borrow.endDate)
@@ -555,7 +554,14 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         else return false;
     }
 
-    /// @dev Method to Varify if the address is Borrower
+	/// @dev Method to Validate if the Borrow is Defeated
+	function borrowIsPayable() public view returns (bool) {
+		require(borrowings[_msgSender()].status == StatusBorrow.PROCESSING, "Borrow not exists");
+		if (block.timestamp >= borrowings[_msgSender()].endDate) return false;
+		return true;
+	}
+
+    /// @dev Method to Verify if the address is Borrower
     /// @param _borrower address of the Borrower
     function isBorrower(address _borrower) public view returns (bool) {
         return borrowings[_borrower].status != StatusBorrow.STARTED;

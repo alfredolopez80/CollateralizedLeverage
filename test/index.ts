@@ -34,6 +34,7 @@ let borrower4: SignerWithAddress;
 let borrower5: SignerWithAddress;
 let swapRouter: any;
 let usdcToken: any;
+let usdcWhale: any;
 let cl: any;
 let usdc: any;
 let router: any;
@@ -133,7 +134,7 @@ describe("CollateralizedLeverage", function () {
         // Impersonate the USDC Whale Account
         await impersonateAccount(USDC_WHALE);
         // Get the Signer of USDC Whale Account
-        const usdcWhale = await ethers.getSigner(USDC_WHALE);
+        usdcWhale = await ethers.getSigner(USDC_WHALE);
         // Get the Balance of USDC Whale Account
         console.log(
             "Balance of the USDC Whale: ",
@@ -446,6 +447,8 @@ describe("CollateralizedLeverage", function () {
                     value: ethers.utils.parseEther("1.0"),
                 }),
         )
+            .to.emit(usdc, "Transfer")
+            .withArgs(cl.address, borrower1.address, amountStableCoin)
             .to.emit(cl, "NewBorrow")
             .withArgs(
                 borrower1.address,
@@ -453,14 +456,421 @@ describe("CollateralizedLeverage", function () {
                 amountStableCoin,
                 amountStableCoin.mul(interestPerMonthBorrowers).div(100),
                 await cl.getAmountMonth(ethers.utils.parseEther("1.0")),
-		);
-		// Display the Amount of Month of the Borrow
-		console.log("Amount of Month of the Borrow: ", parseInt(await cl.getAmountMonth(ethers.utils.parseEther("1.0"))));
+            );
+        // Display the Amount of Month of the Borrow
+        console.log(
+            "Amount of Month of the Borrow: ",
+            parseInt(await cl.getAmountMonth(ethers.utils.parseEther("1.0"))),
+        );
         // Validate the Borrower is not a Borrower After to create the Borrow
         expect(await cl.isBorrower(borrower1.address)).to.equal(true);
     });
 
     //** Happy Path */
+    //** Traveling in the Time for 10 month and payBorrow at the time, and validate all check relations with this methods */
+
+    it("Validate the Borrow of Borrower1 is Payable", async () => {
+        // Validate the Borrow of Borrower1 is Payable
+        expect(await cl.connect(borrower1).borrowIsPayable()).to.equal(true);
+    });
+
+    it("Validate the borrower1 can pay the Borrow 1 month before to finalize the Borrow", async () => {
+        // Validate the time between start date and end date of the borrow is around 11 month
+        const borrow = await cl.borrowings(borrower1.address);
+        expect(
+            (parseInt(borrow.endDate.toString()) -
+                parseInt(borrow.startDate.toString())) /
+                (60 * 60 * 24 * 30),
+        ).to.equal(11);
+        // Move to Before to defeat the Borrow
+        const time: moment.Moment = moment.unix(
+            Math.floor((await ethers.provider.getBlock("latest")).timestamp),
+        );
+        // console.log("time: ", time.utc().format("YYYY-MM-DD HH:mm:ss"));
+        const move: moment.Moment = moment.unix(
+            time.add(10, "month").utc().unix(),
+        );
+        // console.log("move: ", move.utc().format("YYYY-MM-DD HH:mm:ss"));
+        await network.provider.send("evm_setNextBlockTimestamp", [
+            parseInt(move.utc().format("X")),
+        ]);
+        await network.provider.send("evm_mine", []);
+        console.log(
+            `Verify TimeStamp after After Start the first Issuance: `,
+            move,
+            " Full Date: ",
+            moment(move.unix() * 1000)
+                .utc()
+                .format("dddd, MMMM Do YYYY, h:mm:ss a"),
+        );
+        // Validate the Borrow of Borrower1 Still is Payable
+        expect(await cl.connect(borrower1).borrowIsPayable()).to.equal(true);
+    });
+
+    it("Validate the method payBorrow revert if the value of Stablecoin is Zero", async () => {
+        // Validate the payBorrow method revert if the value of Stablecoin is Zero
+        await expect(
+            cl
+                .connect(borrower1)
+                .payBorrow(ethers.utils.parseUnits("0", "wei")),
+        ).to.revertedWith("Amount must be greater than 0");
+    });
+
+    it("Validate the method parBorrow revert if the value exceed the balance of the borrower", async () => {
+        // Validate the payBorrow method revert if the value of Stablecoin is Zero
+        await expect(
+            cl
+                .connect(borrower1)
+                .payBorrow(ethers.utils.parseUnits("100000000000", "wei")),
+        ).to.revertedWith("Not enough Stablecoin");
+    });
+
+    it("Validate the method parBorrow revert if the value not enough for pay the Borrow", async () => {
+        // Validate the payBorrow method revert if the value of Stablecoin is Zero
+        await expect(
+            cl
+                .connect(borrower1)
+                .payBorrow(ethers.utils.parseUnits("600000000", "wei")),
+        ).to.revertedWith("Not enough to pay Borrow");
+    });
+
+    it("Validate the Method repayBorrow revert because the borrow still in process", async () => {
+        // Validate the payBorrow method revert if the value of Stablecoin is Zero
+        await expect(
+            cl
+                .connect(borrower1)
+                .repayLoan(ethers.utils.parseUnits("600000000", "wei")),
+        ).to.revertedWith("The Borrow is not expired");
+    });
+
+    it("Validate i can't release the Collateral before to Paid the Borrow", async () => {
+        // Validate i can't release the Collateral only after the endDate Finalized
+        await expect(cl.connect(borrower1).releaseCollateral()).to.revertedWith(
+            "Borrow is not paid",
+        );
+    });
+
+    it("Validate the Borrower1 can pay the Borrow Correctly", async () => {
+        // add more USDC to borrower1 balance
+        await expect(
+            usdc
+                .connect(usdcWhale)
+                .transfer(
+                    borrower1.address,
+                    ethers.utils.parseUnits("800000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Transfer")
+            .withArgs(
+                usdcWhale.address,
+                borrower1.address,
+                ethers.utils.parseUnits("800000000", "wei"),
+            );
+        // Approve to Cl smart contract spend money of borrower1
+        await expect(
+            usdc
+                .connect(borrower1)
+                .approve(
+                    cl.address,
+                    ethers.utils.parseUnits("1400000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Approval")
+            .withArgs(
+                borrower1.address,
+                cl.address,
+                ethers.utils.parseUnits("1400000000", "wei"),
+            );
+        // Getting data of the Borrow
+        let borrow = await cl.borrowings(borrower1.address);
+        const amountToPaid = await cl.getAmountToPaid(borrower1.address);
+        const interest = borrow.interest;
+        console.log("Amount to Pay: ", amountToPaid.toString() / 1e6);
+        console.log("Interest: ", interest.toString() / 1e6);
+        // Try to Pay the Borrow
+        await expect(cl.connect(borrower1).payBorrow(amountToPaid))
+            .to.emit(usdc, "Transfer")
+            .withArgs(borrower1.address, cl.address, amountToPaid)
+            .to.emit(cl, "BorrowPaid")
+            .withArgs(
+                borrower1.address,
+                ethers.utils.parseEther("1.0"),
+                borrow.amountStableCoin,
+                interest,
+            );
+        // Validate the Borrow status is PAID
+        borrow = await cl.borrowings(borrower1.address);
+        expect(borrow.status).to.equal(2);
+    });
+
+    it("Validate i can't release the Collateral before the endDate Finalized", async () => {
+        // Validate i can't release the Collateral only after the endDate Finalized
+        await expect(cl.connect(borrower1).releaseCollateral()).to.revertedWith(
+            "The Borrow is not expired yet",
+        );
+    });
+
+    it("Validate the Lender can't claim the Collateral if the Borrow not expired or the debt exceed the value in stablecoin of the Collateral", async () => {
+        // Validate the Lender can't collect the Collateral if the Borrow not expired or the debt exceed the value in stablecoin of the Collateral
+        await expect(
+            cl.connect(lender1).claimCollateral(borrower1.address),
+        ).to.revertedWith("Lender cannot claim the Collateral");
+        // Validate for lender is the Collateral is claimable
+        expect(
+            await cl.connect(lender1).collateralIsClaimabe(borrower1.address),
+        ).to.equal(false);
+    });
+
+    it("Validate another Lender can't claim the Collateral of the Lender1", async () => {
+        // Validate another Lender can't claim the Collateral of the Lender1
+        await expect(
+            cl.connect(lender3).claimCollateral(borrower1.address),
+        ).to.revertedWith("Not the Lender of this Borrower");
+        // Validate the owner or any another waller can't claim the Collateral
+        await expect(
+            cl.connect(owner).claimCollateral(borrower1.address),
+        ).to.revertedWith("Not the Lender of this Borrower");
+        await expect(
+            cl.connect(borrower5).claimCollateral(borrower1.address),
+        ).to.revertedWith("Not the Lender of this Borrower");
+    });
+
+    it("Validate the borrower 1 only can claim the Collateral after the Borrow expired", async () => {
+        // Move to Before to defeat the Borrow
+        const time: moment.Moment = moment.unix(
+            Math.floor((await ethers.provider.getBlock("latest")).timestamp),
+        );
+        // console.log("time: ", time.utc().format("YYYY-MM-DD HH:mm:ss"));
+        const move: moment.Moment = moment.unix(
+            time.add(1, "month").utc().unix(),
+        );
+        // console.log("move: ", move.utc().format("YYYY-MM-DD HH:mm:ss"));
+        await network.provider.send("evm_setNextBlockTimestamp", [
+            parseInt(move.utc().format("X")),
+        ]);
+        await network.provider.send("evm_mine", []);
+        console.log(
+            `Verify TimeStamp after After Start the first Issuance: `,
+            move,
+            " Full Date: ",
+            moment(move.unix() * 1000)
+                .utc()
+                .format("dddd, MMMM Do YYYY, h:mm:ss a"),
+        );
+        // getting data fo the borrow
+        let borrow = await cl.borrowings(borrower1.address);
+        // Validate the balance in Eth of the borrower1
+        const balanceBefore = await ethers.provider.getBalance(
+            borrower1.address,
+        );
+        // Validate the borrower 1 only can claim the Collateral after the Borrow expired
+        await expect(cl.connect(borrower1).releaseCollateral())
+            .to.emit(cl, "ReleaseCollateral")
+            .withArgs(
+                borrower1.address,
+                ethers.utils.parseEther("1.0"),
+                borrow.amountStableCoin,
+                borrow.interest,
+            );
+        // Update borrow
+        borrow = await cl.borrowings(borrower1.address);
+        // Validate the Borrow status is CLAIMED
+        expect(borrow.status).to.equal(3);
+        // Validate the balance of borrower1 After is 1 ETH more
+        const balanceAfter = await ethers.provider.getBalance(
+            borrower1.address,
+        );
+        expect(balanceAfter).to.approximately(
+            balanceBefore.add(ethers.utils.parseEther("1.0")),
+            1e6,
+        );
+    });
+
+    //** Finalize the Happy Path */
+
+    //** Create path for Scenario 2, where the Borrower Repay the Borrow */
+    it("Validate the Borrower2 can create a Borrow with the same Loan of the Lender1", async () => {
+        // Validate the Borrower2 can create a Borrow with the same Loan of the Lender1
+        // Getting the Interest for Borrowers
+        const interestPerMonthBorrowers =
+            parseInt((await cl.interestPerMonthBorrowers()).toString()) / 1e18;
+        // Validate the Borrower is not a Borrower before to create the Borrow
+        expect(await cl.isBorrower(borrower2.address)).to.equal(false);
+        // Getting a estimation of ETH to USDC
+        const amountStableCoin = (
+            await cl.getStablecoinPerETH(ethers.utils.parseEther("1.0"))
+        ).div(2);
+        // Validate the Create a Borrow with Borrower2
+        await expect(
+            cl
+                .connect(borrower2)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        )
+            .to.emit(usdc, "Transfer")
+            .withArgs(cl.address, borrower2.address, amountStableCoin)
+            .to.emit(cl, "NewBorrow")
+            .withArgs(
+                borrower2.address,
+                ethers.utils.parseEther("1.0"),
+                amountStableCoin,
+                amountStableCoin.mul(interestPerMonthBorrowers).div(100),
+                await cl.getAmountMonth(ethers.utils.parseEther("1.0")),
+            );
+        // Display the Amount of Month of the Borrow
+        console.log(
+            "Amount of Month of the Borrow: ",
+            parseInt(await cl.getAmountMonth(ethers.utils.parseEther("1.0"))),
+        );
+        // Validate the Borrower is not a Borrower After to create the Borrow
+        expect(await cl.isBorrower(borrower2.address)).to.equal(true);
+    });
+
+    it("Validate the Borrower2 can repayBorrow after to Defeat the Borrow, and unleash the Collateral", async () => {
+        // Move to Before to defeat the Borrow
+        const time: moment.Moment = moment.unix(
+            Math.floor((await ethers.provider.getBlock("latest")).timestamp),
+        );
+        // console.log("time: ", time.utc().format("YYYY-MM-DD HH:mm:ss"));
+        const move: moment.Moment = moment.unix(
+            time.add(11, "month").add(1, "day").utc().unix(),
+        );
+        // console.log("move: ", move.utc().format("YYYY-MM-DD HH:mm:ss"));
+        await network.provider.send("evm_setNextBlockTimestamp", [
+            parseInt(move.utc().format("X")),
+        ]);
+        await network.provider.send("evm_mine", []);
+        console.log(
+            `Verify TimeStamp after After Start the first Issuance: `,
+            move,
+            " Full Date: ",
+            moment(move.unix() * 1000)
+                .utc()
+                .format("dddd, MMMM Do YYYY, h:mm:ss a"),
+        );
+        // Validate the Borrow can't pay using payBorrow
+        expect(await cl.connect(borrower2).borrowIsPayable()).to.equal(false);
+        // add more USDC to borrower1 balance
+        await expect(
+            usdc
+                .connect(usdcWhale)
+                .transfer(
+                    borrower2.address,
+                    ethers.utils.parseUnits("800000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Transfer")
+            .withArgs(
+                usdcWhale.address,
+                borrower2.address,
+                ethers.utils.parseUnits("800000000", "wei"),
+            );
+        // Approve to Cl smart contract spend money of borrower2
+        await expect(
+            usdc
+                .connect(borrower2)
+                .approve(
+                    cl.address,
+                    ethers.utils.parseUnits("1400000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Approval")
+            .withArgs(
+                borrower2.address,
+                cl.address,
+                ethers.utils.parseUnits("1400000000", "wei"),
+            );
+        // Validate the Borrow can't pay using payBorrow
+        await cl
+            .connect(borrower2)
+            .payBorrow(await cl.getAmountToPaid(borrower2.address));
+        // Getting data of the Borrow
+        let borrow = await cl.borrowings(borrower2.address);
+        expect(borrow.status).to.equal(4);
+        const amountToPaid = await cl.getAmountToPaid(borrower2.address);
+        const interest = borrow.interest;
+        console.log("Amount to Pay: ", amountToPaid.toString() / 1e6);
+        console.log("Interest: ", interest.toString() / 1e6);
+        // Try to Pay the Borrow
+        await expect(cl.connect(borrower2).repayLoan(amountToPaid))
+            .to.emit(usdc, "Transfer")
+            .withArgs(borrower2.address, cl.address, amountToPaid)
+            .to.emit(cl, "BorrowRepayed")
+            .withArgs(
+                borrower2.address,
+                ethers.utils.parseEther("1.0"),
+                borrow.amountStableCoin,
+                interest,
+                (
+                    await cl.getAmountToPaid(borrower2.address)
+                ).sub(borrow.amountStableCoin.mul(2)),
+            );
+        // Validate the Borrow status is PAID
+        borrow = await cl.borrowings(borrower2.address);
+        expect(borrow.status).to.equal(2);
+        // Validate the balance in Eth of the borrower1
+        const balanceBefore = await ethers.provider.getBalance(
+            borrower2.address,
+        );
+        // Validate the borrower 1 only can claim the Collateral after the Borrow expired
+        await expect(cl.connect(borrower2).releaseCollateral())
+            .to.emit(cl, "ReleaseCollateral")
+            .withArgs(
+                borrower2.address,
+                ethers.utils.parseEther("1.0"),
+                borrow.amountStableCoin,
+                borrow.interest,
+            );
+        // Update borrow
+        borrow = await cl.borrowings(borrower2.address);
+        // Validate the Borrow status is CLAIMED
+        expect(borrow.status).to.equal(3);
+        // Validate the balance of borrower1 After is 1 ETH more
+        const balanceAfter = await ethers.provider.getBalance(
+            borrower2.address,
+        );
+        expect(balanceAfter).to.approximately(
+            balanceBefore.add(ethers.utils.parseEther("1.0")),
+            1e6,
+        );
+    });
+
+    it("Validate the debt is zero with a borrower out time or without Borrow", async () => {
+        // Validate the debt is zero with a borrower out time or without Borrow
+        expect(await cl.getAmountToPaid(borrower1.address)).to.equal(
+            ethers.utils.parseEther("0.0"),
+        );
+        expect(await cl.getAmountToPaid(borrower5.address)).to.equal(
+            ethers.utils.parseEther("0.0"),
+        );
+    });
+
+    //** Testing the Emergency withdraw Ether */
+    it("Validate only the owner can withdraw all Eth in the contract", async () => {
+        // Validate only the owner can withdraw all Eth in the contract
+        await expect(
+            cl.connect(borrower1).emergencyWithdrawETH(borrower1.address),
+        ).to.revertedWith("Ownable: caller is not the owner");
+        await setBalance(cl.address, ethers.utils.parseEther("1.0"));
+        // Set Balance of 1 ETH into the cl smart contract
+        const clBalance = await ethers.provider.getBalance(cl.address);
+        const balanceBefore = await ethers.provider.getBalance(
+            borrower1.address,
+        );
+        console.log(
+            "balanceBefore: ",
+            parseInt(balanceBefore.toString()) / 1e6,
+        );
+        // Validate the owner can withdraw all Eth in the contract
+        await cl.connect(owner).emergencyWithdrawETH(borrower1.address);
+        // Validate the new Balance in Ether of the borrower1
+        expect(await ethers.provider.getBalance(borrower1.address)).to.equal(
+            balanceBefore.add(clBalance),
+        );
+        // Unpaused the Smart contract
+        await cl.connect(owner).unpause();
+    });
 
     // ** Test Transfer OwnerShip */
     it("Transfer Ownership to Another Account", async function () {
