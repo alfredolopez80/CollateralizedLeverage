@@ -89,6 +89,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
 
     /// Event for when a new Loan is created, where `amountPerMount` is the amount of Stablecoin received based on the interest of the Loan
     event NewLoan(
+		uint256 indexed indexLoan,
         address indexed lender,
         uint256 amountStableCoin,
         uint256 amountPerMount
@@ -195,11 +196,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             loans[indexLoans].status == StatusLoan.STARTED,
             "Loan already exists"
         );
-        require(_amountStableCoin > 0, "Amount must be greater than 0");
-        require(
-            stablecoin.balanceOf(caller) >= _amountStableCoin,
-            "Not enough Stablecoin"
-        );
+        require(_amountStableCoin > 0, "Amount of Stablecoin must be greater than 0");
         stablecoin.safeTransferFrom(caller, address(this), _amountStableCoin);
         loans[indexLoans] = Loan({
             status: StatusLoan.PROCESSING,
@@ -208,12 +205,13 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             amountStableCoin: _amountStableCoin,
             amountAllocated: 0,
             amountClaimed: 0,
-            interest: _amountStableCoin.mul(interestPerMonthLenders).div(100)
+            interest: _amountStableCoin.mulDiv(interestPerMonthLenders, 1 ether).div(100)
         });
         emit NewLoan(
+			indexLoans,
             caller,
             _amountStableCoin,
-            _amountStableCoin.mul(interestPerMonthLenders).div(100)
+            _amountStableCoin.mulDiv(interestPerMonthLenders, 1 ether).div(100)
         );
         indexLoans++;
     }
@@ -257,7 +255,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             endDate: block.timestamp.add(getAmountMonth(value).mul(30 days)),
             amountCollateral: value,
             amountStableCoin: amountStableCoin,
-            interest: amountStableCoin.mul(interestPerMonthBorrowers).div(100),
+            interest: amountStableCoin.mulDiv(interestPerMonthBorrowers, 1 ether).div(100),
             indexLender: _indexLoans
         });
         loans[_indexLoans].amountAllocated = loans[_indexLoans]
@@ -267,7 +265,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             caller,
             value,
             amountStableCoin,
-            amountStableCoin.mulDiv(interestPerMonthBorrowers, 100),
+            amountStableCoin.mulDiv(interestPerMonthBorrowers, 1 ether).div(100),
             getAmountMonth(value)
         );
     }
