@@ -59,6 +59,7 @@ Solidity contract (can be published online on testnet or delivered as a git proj
 - Using UniSwap like oracle for getting the Rate between ETH / USD
 - The interest rate is 5% per month for Lenders
 - The interest rate is 10% per month for Borrowers
+- the Lender and Borrower only can create a unique Loan and Borrow
 
 ## How to use
 

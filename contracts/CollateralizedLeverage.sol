@@ -193,8 +193,8 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     {
         address caller = _msgSender();
         require(
-            loans[indexLoans].status == StatusLoan.STARTED,
-            "Loan already exists"
+            isLender(caller) == false,
+            "Lender has a loan that already exists"
         );
         require(_amountStableCoin > 0, "Amount of Stablecoin must be greater than 0");
         stablecoin.safeTransferFrom(caller, address(this), _amountStableCoin);
@@ -224,20 +224,20 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         whenNotPaused
         nonReentrant
     {
-        address caller = _msgSender();
         uint256 value = msg.value;
+		require(value > 0, "Amount of Collateral must be greater than 0");
         Loan memory loan = loans[_indexLoans];
-        require(loan.status == StatusLoan.PROCESSING, "Loan not exists");
+        require(loan.status == StatusLoan.PROCESSING, "Loan doesn't exist");
         require(
             loan.amountStableCoin.sub(loan.amountAllocated) >=
                 _amountStableCoin,
             "Not enough Stablecoin Available in this Index Loan"
         );
+		address caller = _msgSender();
         require(
             borrowings[caller].status == StatusBorrow.STARTED,
             "Borrow already exists"
         );
-        require(value > 0, "Amount of Collateral must be greater than 0");
         uint256 amountStableCoin = getStablecoinPerETH(value).div(2);
         require(
             amountStableCoin >= _amountStableCoin,
@@ -418,6 +418,34 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             revert("Lender cannot claim the Collateral");
         }
     }
+
+	// ------- Emergency Methods ------------- //
+
+	/// @dev Method to getting all ERC20 token of the Contract and send to Another Account, validate only owner
+	/// @param _receipt Address of the Account that will receive the ERC20 token
+	function emergencyWithdrawERC20(address _receipt) external onlyOwner {
+		require(_receipt != address(0), "Receipt Address cannot be 0x0");
+		// Paused all Methods
+		_pause();
+		IERC20 token = IERC20(stablecoin);
+		uint256 balance = token.balanceOf(address(this));
+		token.safeTransfer(_receipt, balance);
+	}
+
+	/// @dev Method to getting all ETH of the Contract and send to Another Account, validate only owner
+	/// @param _receipt Address of the Account that will receive the ETH
+	function emergencyWithdrawETH(address payable _receipt) external onlyOwner {
+		require(_receipt != address(0), "Receipt Address cannot be 0x0");
+		// Paused all Methods
+		_pause();
+		uint256 balance = address(this).balance;
+		// solhint-disable-next-line avoid-low-level-calls, avoid-call-value
+		(bool success, ) = _receipt.call{value: balance}("");
+		require(
+			success,
+			"Address: unable to send value, recipient may have reverted"
+		);
+	}
 
     /// @dev Method to getting the amount of Mount where the collateral is low the stablecoin lend out plus interes
     function getAmountMonth(uint256 _amountCollateral)

@@ -189,6 +189,13 @@ describe("CollateralizedLeverage", function () {
 
     //** Validate Principal Flow of the Collateralized Leverage Smart Contract*/
 
+    it("Validate method CreateLoan revert is the amount is zero", async () => {
+        // Validate the Create a Loan with Lender3
+        await expect(
+            cl.connect(lender3).createLoan(ethers.utils.parseUnits("0", "wei")),
+        ).to.revertedWith("Amount of Stablecoin must be greater than 0");
+    });
+
     // ** Validate the Method Pause and Unpaused for the Principal Method in the Smart Contract */
     it("Paused the Smart Contract and Validate the all principal method Revert", async () => {
         //Pause Smart Contract cl
@@ -247,27 +254,20 @@ describe("CollateralizedLeverage", function () {
         await expect(
             cl
                 .connect(lender3)
-                .createLoan(ethers.utils.parseUnits("10000000000", "wei")),
+                .createLoan(ethers.utils.parseUnits("500000000", "wei")),
         )
             .to.emit(cl, "NewLoan")
             .withArgs(
                 1,
                 lender3.address,
-                ethers.utils.parseUnits("10000000000", "wei"),
+                ethers.utils.parseUnits("500000000", "wei"),
                 ethers.utils
-                    .parseUnits("10000000000", "wei")
+                    .parseUnits("500000000", "wei")
                     .mul(interestPerMonthLenders)
                     .div(100),
             );
         // Validate the Loan was creates by Lender3
         expect(await cl.isLender(lender3.address)).to.equal(true);
-    });
-
-    it("Validate method CreateLoan revert is the amount is zero", async () => {
-        // Validate the Create a Loan with Lender3
-        await expect(
-            cl.connect(lender3).createLoan(ethers.utils.parseUnits("0", "wei")),
-        ).to.revertedWith("Amount of Stablecoin must be greater than 0");
     });
 
     it("Validate method createLoan revert if the lender1 don't approved previous to the smart contract to spend the ERC20 Token", async () => {
@@ -318,6 +318,101 @@ describe("CollateralizedLeverage", function () {
     it("Validate the Lender1 is a Lender After to create in the correct way the Loan", async () => {
         // Validate the Lender1 is not a Lender
         expect(await cl.isLender(lender1.address)).to.equal(true);
+    });
+
+    it("Validate the all data storage in the Loan 2 from the Lender 1", async () => {
+        // auxilary values
+        const interestPerMonthLenders =
+            (await cl.interestPerMonthLenders()) / 1e18;
+        // Vallidate the all Data of the Loan 2
+        const loan2 = await cl.loans(2);
+        expect(loan2.status).to.equal(1);
+        expect(loan2.lender).to.equal(lender1.address);
+        expect(loan2.amountStableCoin).to.equal(
+            ethers.utils.parseUnits("10000000000", "wei"),
+        );
+        expect(loan2.amountAllocated).to.equal(
+            ethers.utils.parseUnits("0", "wei"),
+        );
+        expect(loan2.amountClaimed).to.equal(
+            ethers.utils.parseUnits("0", "wei"),
+        );
+        expect(loan2.interest).to.equal(
+            ethers.utils
+                .parseUnits("10000000000", "wei")
+                .mul(interestPerMonthLenders)
+                .div(100),
+        );
+    });
+
+    it("Validate method createLoan revert if the same Lender try to Create a New Loan", async () => {
+        // Validate the Create a Loan with Lender1
+        await expect(
+            cl
+                .connect(lender1)
+                .createLoan(ethers.utils.parseUnits("10000000000", "wei")),
+        ).to.revertedWith("Lender has a loan that already exists");
+    });
+
+    // ** Validate create a Borrow and check all validations */
+
+    it("Validate Method createBorrow revert if the value in ETH is zero", async () => {
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 2, {
+                    value: 0,
+                }),
+        ).to.revertedWith("Amount of Collateral must be greater than 0");
+    });
+
+    it("Validate Method createBorrow revert if the Index of Loans don't exists", async () => {
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 3, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        ).to.revertedWith("Loan doesn't exist");
+    });
+
+    it("Validate Method createBorrow revert if the Index of Loans don't have enough balance", async () => {
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 1, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        ).to.revertedWith("Not enough Stablecoin Available in this Index Loan");
+    });
+
+    it("Validate Method createBorrow revert if the amount in stable coin request exceed the 50 % of value of Collateral in Stablecoin", async () => {
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("1000000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        ).to.revertedWith(
+            "The amount of Stablecoin must be greater than the amount of Collateral",
+        );
+    });
+
+    it("Validate Method createBorrow revert if the amount in stable coin request exceed the 50 % of value of Collateral in Stablecoin", async () => {
+        // Validate the Create a Borrow with Borrower1
+        await expect(
+            cl
+                .connect(borrower1)
+                .createBorrow(ethers.utils.parseUnits("10500000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("12.0"),
+                }),
+        ).to.revertedWith(
+            "The amount of Stablecoin must be greater than the amount of Collateral",
+        );
     });
 
     // ** Test Transfer OwnerShip */
