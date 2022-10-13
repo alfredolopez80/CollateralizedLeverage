@@ -121,7 +121,8 @@
 
 
 **Descriptions of Arguments:**
- **Amount**: of Stablecoin to represent of 50% of Value of Collateral at moment to create the Borrow 
+ **Amount**: of Stablecoin to represent of 50% of Value of Collateral at moment to create the Borrow
+  **_indexLoans**: Index of the Loand where take the stablecoin 
 
 
 
@@ -228,7 +229,7 @@
 
 
 
-#### Methods `getAmountToPay(address _borrower) → uint256 debt`  Visibility:  public
+#### Methods `getAmountToPaid(address _borrower) → uint256 debt`  Visibility:  public
 
 **Description**: Method to Getting the debt of the Borrow
 
@@ -298,9 +299,22 @@
 
 
 
+#### Methods `borrowIsPayable() → bool`  Visibility:  public
+
+**Description**: Method to Validate if the Borrow is Defeated
+
+
+**Outputs:**
+| Type | Name |
+| ---- | ---- |
+| bool | Variable |
+
+
+
+
 #### Methods `isBorrower(address _borrower) → bool`  Visibility:  public
 
-**Description**: Method to Varify if the address is Borrower
+**Description**: Method to Verify if the address is Borrower
 
 
 **Arguments:**

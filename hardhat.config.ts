@@ -82,7 +82,7 @@ module.exports = {
 			// accounts: [`0x${process.env.PRIVATE_KEY}`],
 			accounts: {
 				mnemonic: process.env.MNEMONIC,
-				balance: 1000,
+				balance: 10,
 				count: 100,
 			},
 		},
@@ -97,7 +97,7 @@ module.exports = {
 				url: `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_KEY}`,
 				accounts: {
 					mnemonic: process.env.MNEMONIC,
-					balance: 1000,
+					balance: 10,
 					count: 100,
 				},
 			},

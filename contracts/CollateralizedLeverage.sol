@@ -12,8 +12,6 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-import "hardhat/console.sol";
-
 contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
     using Address for address;
@@ -288,7 +286,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     {
         address caller = _msgSender();
         Borrow memory borrow = borrowings[caller];
-		require(_amountStableCoin > 0, "Amount must be greater than 0");
+        require(_amountStableCoin > 0, "Amount must be greater than 0");
         require(
             stablecoin.balanceOf(caller) >= _amountStableCoin,
             "Not enough Stablecoin"
@@ -368,7 +366,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     function releaseCollateral() external whenNotPaused nonReentrant {
         address caller = _msgSender();
         Borrow memory borrow = borrowings[caller];
-		require(isBorrower(caller), "Borrower doesn't have any Borrow");
+        require(isBorrower(caller), "Borrower doesn't have any Borrow");
         require(borrow.status == StatusBorrow.PAID, "Borrow is not paid");
         require(
             block.timestamp >= borrow.endDate,
@@ -414,7 +412,7 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             loans[borrow.indexLender].amountClaimed = loans[borrow.indexLender]
                 .amountClaimed
                 .add(getStablecoinPerETH(borrow.amountCollateral));
-            borrowings[caller] = borrow;
+            borrowings[borrower].status = borrow.status;
             /// Transfer the Collateral
 
             // solhint-disable-next-line avoid-low-level-calls, avoid-call-value
@@ -480,7 +478,8 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
     {
         uint256 amountMonthPaid;
         Borrow memory borrow = borrowings[_borrower];
-        uint256 amountPerMonth = borrow.amountStableCoin
+        uint256 amountPerMonth = borrow
+            .amountStableCoin
             .mulDiv(interestPerMonthBorrowers, 1 ether)
             .div(100);
         if (
@@ -488,8 +487,6 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
             (block.timestamp < borrow.endDate)
         ) {
             amountMonthPaid = borrow.endDate.sub(borrow.startDate).div(30 days);
-            if (borrow.endDate.sub(borrow.startDate).mod(30 days) > 0)
-                amountMonthPaid++;
             debt = borrow.amountStableCoin.add(
                 amountPerMonth.mul(amountMonthPaid)
             );
@@ -554,12 +551,15 @@ contract CollateralizedLeverage is Ownable, Pausable, ReentrancyGuard {
         else return false;
     }
 
-	/// @dev Method to Validate if the Borrow is Defeated
-	function borrowIsPayable() public view returns (bool) {
-		require(borrowings[_msgSender()].status == StatusBorrow.PROCESSING, "Borrow not exists");
-		if (block.timestamp >= borrowings[_msgSender()].endDate) return false;
-		return true;
-	}
+    /// @dev Method to Validate if the Borrow is Defeated
+    function borrowIsPayable() public view returns (bool) {
+        require(
+            borrowings[_msgSender()].status == StatusBorrow.PROCESSING,
+            "Borrow not exists"
+        );
+        if (block.timestamp >= borrowings[_msgSender()].endDate) return false;
+        return true;
+    }
 
     /// @dev Method to Verify if the address is Borrower
     /// @param _borrower address of the Borrower

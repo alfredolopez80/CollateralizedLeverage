@@ -4,11 +4,9 @@
 	"description": "Solidity Coding Challange",
 	"main": "hardhat.config.ts",
 	"scripts": {
-		"test": "npx hardhat test",
+		"test": "npx hardhat test --network hardhat",
 		"compile": "npx hardhat compile",
 		"coverage": "npx hardhat coverage",
-		"coverage-sto": "npx hardhat coverage --testfiles 'test/*.test.ts'",
-		"sto-gas-report": "npx hardhat test ./test/*.test.ts",
 		"lint": "prettier --list-different 'contracts/**/*.sol'",
 		"build": "rm -rf docs/ && npx hardhat clean && npx hardhat compile && npx solidity-docgen --solc-module solc -i ./contracts -t ./templates",
 		"deploy-test": "npx hardhat run ./scripts/deploy.ts",

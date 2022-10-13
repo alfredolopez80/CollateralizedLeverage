@@ -72,6 +72,44 @@ describe("CollateralizedLeverage", function () {
             "CollateralizedLeverage",
             owner,
         );
+        // Try to Fail the deployment
+        await expect(
+            CollateralizedLeverage.deploy(
+                usdcToken,
+                ZERO,
+                ethers.utils.parseEther("10"),
+            ),
+        ).to.revertedWith(
+            "Stablecoin or Uniswap Router address cannot be zero",
+        );
+        await expect(
+            CollateralizedLeverage.deploy(
+                ZERO,
+                swapRouter,
+                ethers.utils.parseEther("10"),
+            ),
+        ).to.revertedWith(
+            "Stablecoin or Uniswap Router address cannot be zero",
+        );
+        await expect(
+            CollateralizedLeverage.deploy(
+                usdcToken,
+                owner.address,
+                ethers.utils.parseEther("10"),
+            ),
+        ).to.revertedWith(
+            "Stablecoin or Uniswap Router address must be a contract",
+        );
+        await expect(
+            CollateralizedLeverage.deploy(
+                owner.address,
+                swapRouter,
+                ethers.utils.parseEther("10"),
+            ),
+        ).to.revertedWith(
+            "Stablecoin or Uniswap Router address must be a contract",
+        );
+        // Final Deployment
         cl = await CollateralizedLeverage.deploy(
             usdcToken,
             swapRouter,
@@ -481,7 +519,7 @@ describe("CollateralizedLeverage", function () {
             (parseInt(borrow.endDate.toString()) -
                 parseInt(borrow.startDate.toString())) /
                 (60 * 60 * 24 * 30),
-        ).to.equal(11);
+        ).to.approximately(11,1);
         // Move to Before to defeat the Borrow
         const time: moment.Moment = moment.unix(
             Math.floor((await ethers.provider.getBlock("latest")).timestamp),
@@ -674,15 +712,15 @@ describe("CollateralizedLeverage", function () {
             );
         // Update borrow
         borrow = await cl.borrowings(borrower1.address);
-        // Validate the Borrow status is CLAIMED
+        // Validate the Borrow status is RELEASED
         expect(borrow.status).to.equal(3);
         // Validate the balance of borrower1 After is 1 ETH more
         const balanceAfter = await ethers.provider.getBalance(
             borrower1.address,
-        );
+		);
         expect(balanceAfter).to.approximately(
             balanceBefore.add(ethers.utils.parseEther("1.0")),
-            1e6,
+            1e14,
         );
     });
 
@@ -792,6 +830,20 @@ describe("CollateralizedLeverage", function () {
         const interest = borrow.interest;
         console.log("Amount to Pay: ", amountToPaid.toString() / 1e6);
         console.log("Interest: ", interest.toString() / 1e6);
+        // Try to Repay with amount of Stable coin in Zero
+        await expect(cl.connect(borrower2).repayLoan(0)).to.be.revertedWith(
+            "Amount must be greater than 0",
+        );
+        // Try to Repay with amount of Stable coin more than the balance of Borrower 2
+        await expect(
+            cl
+                .connect(borrower2)
+                .repayLoan(ethers.utils.parseUnits("1500000000", "wei")),
+        ).to.be.revertedWith("Not enough Stablecoin");
+        // Try to Repay with amount of Stable coin under the amount necessary to repay the Loan
+        await expect(
+            cl.connect(borrower2).repayLoan(amountToPaid.sub(1)),
+        ).to.be.revertedWith("The Amount not Enough to unleash the Collateral");
         // Try to Pay the Borrow
         await expect(cl.connect(borrower2).repayLoan(amountToPaid))
             .to.emit(usdc, "Transfer")
@@ -813,7 +865,7 @@ describe("CollateralizedLeverage", function () {
         const balanceBefore = await ethers.provider.getBalance(
             borrower2.address,
         );
-        // Validate the borrower 1 only can claim the Collateral after the Borrow expired
+        // Validate the borrower 2 only can claim the Collateral after the Borrow expired
         await expect(cl.connect(borrower2).releaseCollateral())
             .to.emit(cl, "ReleaseCollateral")
             .withArgs(
@@ -832,9 +884,150 @@ describe("CollateralizedLeverage", function () {
         );
         expect(balanceAfter).to.approximately(
             balanceBefore.add(ethers.utils.parseEther("1.0")),
-            1e6,
+            1e14,
         );
     });
+
+    //** End Second Scenario where the Borrower repay */
+
+    //** Start Second Scenario where the Lender1 Claim the Collateral */
+
+    it("Validate the Borrower3 can create a Borrow with the same Loan of the Lender1", async () => {
+        // Validate the Borrower2 can create a Borrow with the same Loan of the Lender1
+        // Getting the Interest for Borrowers
+        const interestPerMonthBorrowers =
+            parseInt((await cl.interestPerMonthBorrowers()).toString()) / 1e18;
+        // Validate the Borrower is not a Borrower before to create the Borrow
+        expect(await cl.isBorrower(borrower3.address)).to.equal(false);
+        // Getting a estimation of ETH to USDC
+        const amountStableCoin = (
+            await cl.getStablecoinPerETH(ethers.utils.parseEther("1.0"))
+        ).div(2);
+        // Validate the Create a Borrow with Borrower3
+        await expect(
+            cl
+                .connect(borrower3)
+                .createBorrow(ethers.utils.parseUnits("600000000", "wei"), 2, {
+                    value: ethers.utils.parseEther("1.0"),
+                }),
+        )
+            .to.emit(usdc, "Transfer")
+            .withArgs(cl.address, borrower3.address, amountStableCoin)
+            .to.emit(cl, "NewBorrow")
+            .withArgs(
+                borrower3.address,
+                ethers.utils.parseEther("1.0"),
+                amountStableCoin,
+                amountStableCoin.mul(interestPerMonthBorrowers).div(100),
+                await cl.getAmountMonth(ethers.utils.parseEther("1.0")),
+            );
+        // Display the Amount of Month of the Borrow
+        console.log(
+            "Amount of Month of the Borrow: ",
+            parseInt(await cl.getAmountMonth(ethers.utils.parseEther("1.0"))),
+        );
+        // Validate the Borrower is not a Borrower After to create the Borrow
+        expect(await cl.isBorrower(borrower3.address)).to.equal(true);
+    });
+
+    it("Validate the Borrower3 not repayBorrow and the Lender 1 Claim the Collateral", async () => {
+        // Move to Before to defeat the Borrow
+        const time: moment.Moment = moment.unix(
+            Math.floor((await ethers.provider.getBlock("latest")).timestamp),
+        );
+        // console.log("time: ", time.utc().format("YYYY-MM-DD HH:mm:ss"));
+        const move: moment.Moment = moment.unix(
+            time.add(11, "month").add(1, "day").utc().unix(),
+        );
+        // console.log("move: ", move.utc().format("YYYY-MM-DD HH:mm:ss"));
+        await network.provider.send("evm_setNextBlockTimestamp", [
+            parseInt(move.utc().format("X")),
+        ]);
+        await network.provider.send("evm_mine", []);
+        console.log(
+            `Verify TimeStamp after After Start the first Issuance: `,
+            move,
+            " Full Date: ",
+            moment(move.unix() * 1000)
+                .utc()
+                .format("dddd, MMMM Do YYYY, h:mm:ss a"),
+        );
+        // Validate the Borrow can't pay using payBorrow
+        expect(await cl.connect(borrower3).borrowIsPayable()).to.equal(false);
+        // add more USDC to borrower1 balance
+        await expect(
+            usdc
+                .connect(usdcWhale)
+                .transfer(
+                    borrower3.address,
+                    ethers.utils.parseUnits("800000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Transfer")
+            .withArgs(
+                usdcWhale.address,
+                borrower3.address,
+                ethers.utils.parseUnits("800000000", "wei"),
+            );
+        // Approve to Cl smart contract spend money of borrower3
+        await expect(
+            usdc
+                .connect(borrower3)
+                .approve(
+                    cl.address,
+                    ethers.utils.parseUnits("1400000000", "wei"),
+                ),
+        )
+            .to.emit(usdc, "Approval")
+            .withArgs(
+                borrower3.address,
+                cl.address,
+                ethers.utils.parseUnits("1400000000", "wei"),
+            );
+        // Try to Pay
+        await cl
+            .connect(borrower3)
+            .payBorrow(await cl.getAmountToPaid(borrower3.address));
+        // Getting data of the Borrow
+        let borrow = await cl.borrowings(borrower3.address);
+        // Validate the Borrow status is DEFEATED
+        expect(borrow.status).to.equal(4);
+        const amountToPaid = await cl.getAmountToPaid(borrower3.address);
+        const interest = borrow.interest;
+        console.log("Amount to Pay: ", amountToPaid.toString() / 1e6);
+        console.log("Interest: ", interest.toString() / 1e6);
+        // get the Balance in Ether of lender1 before the tx
+		const balanceBefore = await ethers.provider.getBalance(lender1.address);
+		// Estimation Gas
+		const gasEstimation = await cl
+            .connect(lender1)
+            .estimateGas.claimCollateral(borrower3.address);
+        // Validate the Lender 1 only can claim the Collateral after the Borrow expired
+        await expect(
+            cl.connect(lender3).claimCollateral(borrower3.address),
+        ).to.rejectedWith("Not the Lender of this Borrower");
+        // Lender 1 Claim the Collateral
+        await expect(cl.connect(lender1).claimCollateral(borrower3.address))
+            .to.emit(cl, "ClaimCollateral")
+            .withArgs(
+                lender1.address,
+                ethers.utils.parseEther("1.0"),
+                borrow.amountStableCoin,
+                borrow.interest,
+            );
+        // Update borrow
+        borrow = await cl.borrowings(borrower3.address);
+        // Validate the Borrow status is CLAIMED
+        expect(borrow.status).to.equal(5);
+        // Validate the balance of borrower1 After is 1 ETH more
+        const balanceAfter = await ethers.provider.getBalance(lender1.address);
+        expect(balanceAfter).to.approximately(
+            balanceBefore.add(ethers.utils.parseEther("1.0")),
+            1e14,
+        );
+    });
+
+    //** End Scenario 2 where the Lender 1 Claim the Collateral */
 
     it("Validate the debt is zero with a borrower out time or without Borrow", async () => {
         // Validate the debt is zero with a borrower out time or without Borrow
@@ -844,6 +1037,18 @@ describe("CollateralizedLeverage", function () {
         expect(await cl.getAmountToPaid(borrower5.address)).to.equal(
             ethers.utils.parseEther("0.0"),
         );
+    });
+
+    it("Transfer ETH to the Contract", async () => {
+        // Transfer ETH to the Contract
+        await expect(
+            lender1.sendTransaction({
+                to: cl.address,
+                value: ethers.utils.parseEther("1.0"),
+            }),
+        )
+            .to.emit(cl, "PaymentReceived")
+            .withArgs(lender1.address, ethers.utils.parseEther("1.0"));
     });
 
     //** Testing the Emergency withdraw Ether */
